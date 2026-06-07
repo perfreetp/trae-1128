@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import {
   Plus,
   AlertCircle,
@@ -39,6 +39,8 @@ export default function Maintenance() {
     addMaterialUsage,
     updateMaterialStock,
     addMaintenanceLog,
+    maintenanceLogs,
+    materialUsages,
   } = useAppStore();
   
   const [showModal, setShowModal] = useState(false);
@@ -132,6 +134,16 @@ export default function Maintenance() {
     };
     addMaterialUsage(usage);
     updateMaterialStock(selectedMaterialId, materialQuantity);
+
+    const log: MaintenanceLog = {
+      id: generateId(),
+      workOrderId: selectedOrder.id,
+      handlerId: currentUser.id,
+      action: '添加耗材',
+      description: `使用耗材：${material.name} x ${materialQuantity}${material.unit}`,
+      createdAt: new Date().toISOString(),
+    };
+    addMaintenanceLog(log);
 
     setSelectedMaterialId('');
     setMaterialQuantity(1);
@@ -477,23 +489,81 @@ export default function Maintenance() {
                 </div>
               )}
 
-              <div className="border-t border-gray-100 pt-6">
-                <h5 className="font-medium text-gray-900 mb-3 flex items-center gap-2">
-                  <History className="w-4 h-4" />
-                  流转记录
-                </h5>
-                <div className="space-y-3">
-                  <div className="flex gap-3">
-                    <div className="w-8 h-8 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center flex-shrink-0">
-                      <AlertCircle className="w-4 h-4" />
+              {selectedOrder && (() => {
+                const orderLogs = maintenanceLogs.filter((l) => l.workOrderId === selectedOrder.id).sort((a, b) =>
+                  new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+                );
+                const orderMaterialUsages = materialUsages.filter((u) => u.workOrderId === selectedOrder.id);
+                
+                return (
+                  <>
+                    {orderMaterialUsages.length > 0 && (
+                      <div className="border-t border-gray-100 pt-6">
+                        <h5 className="font-medium text-gray-900 mb-3 flex items-center gap-2">
+                          <Package className="w-4 h-4" />
+                          耗材使用记录
+                        </h5>
+                        <div className="space-y-2">
+                          {orderMaterialUsages.map((usage) => {
+                            const material = materials.find((m) => m.id === usage.materialId);
+                            return (
+                              <div key={usage.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                                <span className="text-sm text-gray-900">{material?.name}</span>
+                                <span className="text-sm font-medium text-gray-600">x {usage.quantity}{material?.unit}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                    
+                    <div className="border-t border-gray-100 pt-6">
+                      <h5 className="font-medium text-gray-900 mb-3 flex items-center gap-2">
+                        <History className="w-4 h-4" />
+                        流转记录
+                      </h5>
+                      <div className="space-y-3">
+                        <div className="flex gap-3">
+                          <div className="w-8 h-8 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center flex-shrink-0">
+                            <AlertCircle className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <p className="text-sm text-gray-900">工单创建</p>
+                            <p className="text-xs text-gray-500">{formatDateTime(selectedOrder.createdAt)}</p>
+                          </div>
+                        </div>
+                        {orderLogs.map((log) => {
+                          const handler = users.find((u) => u.id === log.handlerId);
+                          const actionIcon = log.action === '派单' ? User :
+                                            log.action === '开始处理' ? Wrench :
+                                            log.action === '添加耗材' ? Package :
+                                            log.action === '完成维修' ? CheckCircle2 : AlertCircle;
+                          const actionColor = log.action === '派单' ? 'bg-blue-100 text-blue-600' :
+                                             log.action === '开始处理' ? 'bg-yellow-100 text-yellow-600' :
+                                             log.action === '添加耗材' ? 'bg-purple-100 text-purple-600' :
+                                             log.action === '完成维修' ? 'bg-green-100 text-green-600' :
+                                             'bg-gray-100 text-gray-600';
+                          return (
+                            <div key={log.id} className="flex gap-3">
+                              <div className={cn('w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0', actionColor)}>
+                                {React.createElement(actionIcon, { className: 'w-4 h-4' })}
+                              </div>
+                              <div>
+                                <p className="text-sm text-gray-900">
+                                  {log.action}
+                                  {handler && <span className="text-gray-500"> - {handler.name}</span>}
+                                </p>
+                                <p className="text-xs text-gray-500">{log.description}</p>
+                                <p className="text-xs text-gray-400 mt-0.5">{formatDateTime(log.createdAt)}</p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-sm text-gray-900">工单创建</p>
-                      <p className="text-xs text-gray-500">{formatDateTime(selectedOrder.createdAt)}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
+                  </>
+                );
+              })()}
 
               <div className="flex gap-3 pt-4 border-t border-gray-100">
                 {selectedOrder.status === 'pending' && (

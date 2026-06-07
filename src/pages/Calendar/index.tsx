@@ -6,6 +6,7 @@ import {
   Clock,
   User,
   Cpu,
+  AlertTriangle,
 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { mockCategories } from '@/data/mockData';
@@ -13,7 +14,7 @@ import StatusBadge from '@/components/StatusBadge';
 import { formatDate, cn } from '@/utils';
 
 export default function CalendarPage() {
-  const { reservations, devices, users, addReservation, currentUser } = useAppStore();
+  const { reservations, devices, users, addReservation, currentUser, trainings } = useAppStore();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDevice, setSelectedDevice] = useState('all');
   const [showModal, setShowModal] = useState(false);
@@ -66,6 +67,20 @@ export default function CalendarPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.deviceId || !formData.purpose) return;
+
+    const device = devices.find((d) => d.id === formData.deviceId);
+    if (device?.categoryId === 'c4') {
+      const hasValidTraining = trainings.some((t) =>
+        t.deviceId === device.id &&
+        t.userId === currentUser.id &&
+        t.result === 'passed' &&
+        (!t.expiryDate || new Date(t.expiryDate) > new Date())
+      );
+      if (!hasValidTraining) {
+        alert('该设备为大型精密仪器，您尚未通过有效的操作培训，无法预约！请先参加培训并通过考核。');
+        return;
+      }
+    }
 
     const newReservation = {
       id: `r${Date.now()}`,
@@ -282,6 +297,23 @@ export default function CalendarPage() {
                     <option key={d.id} value={d.id}>{d.name} - ¥{d.hourlyRate}/时</option>
                   ))}
                 </select>
+                {formData.deviceId && devices.find((d) => d.id === formData.deviceId)?.categoryId === 'c4' && (
+                  <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded-lg flex items-start gap-2">
+                    <AlertTriangle className="w-4 h-4 text-yellow-600 flex-shrink-0 mt-0.5" />
+                    <div className="text-xs text-yellow-700">
+                      {trainings.some((t) =>
+                        t.deviceId === formData.deviceId &&
+                        t.userId === currentUser.id &&
+                        t.result === 'passed' &&
+                        (!t.expiryDate || new Date(t.expiryDate) > new Date())
+                      ) ? (
+                        <span className="text-green-600 font-medium">✓ 您已持有该设备的有效培训资质</span>
+                      ) : (
+                        <span>该设备为大型精密仪器，需要通过专门培训后方可预约使用</span>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>

@@ -65,7 +65,7 @@ export default function Dashboard() {
       }
     }
     if (advancedFilters.needTraining) {
-      matchesAdvanced = matchesAdvanced && device.categoryId === 'cat4';
+      matchesAdvanced = matchesAdvanced && device.categoryId === 'c4';
     }
     
     return matchesSearch && matchesCategory && matchesStatus && matchesLab && matchesAdvanced;
@@ -454,10 +454,15 @@ export default function Dashboard() {
                   <GraduationCap className="w-5 h-5 text-purple-500" />
                   培训准入要求
                 </h5>
-                {deviceCategory?.id === 'cat4' ? (
+                {deviceCategory?.id === 'c4' ? (
                   <div className="p-4 bg-purple-50 border border-purple-200 rounded-lg">
                     <p className="text-sm text-purple-700 font-medium">此为大型精密仪器，需要通过专门培训后方可预约使用</p>
-                    <p className="text-xs text-purple-600 mt-2">已有 {deviceTrainings.filter((t) => t.result === 'passed').length} 人通过培训</p>
+                    <p className="text-xs text-purple-600 mt-2">
+                      已有 {deviceTrainings.filter((t) => 
+                        t.result === 'passed' && 
+                        (!t.expiryDate || new Date(t.expiryDate) > new Date())
+                      ).length} 人持有有效培训资质
+                    </p>
                   </div>
                 ) : (
                   <p className="text-sm text-gray-500">无需专门培训，所有授权用户均可预约使用</p>

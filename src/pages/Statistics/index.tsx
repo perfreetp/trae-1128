@@ -33,21 +33,23 @@ export default function Statistics() {
   };
 
   const handleExport = () => {
-    const filteredReservations = reservations.filter((r) => {
+    const completedReservations = reservations.filter((r) => r.status === 'completed');
+    const filteredReservations = completedReservations.filter((r) => {
+      const dateToCheck = r.actualStartTime || r.startTime;
       if (dateRange === 'week') {
         const weekAgo = new Date();
         weekAgo.setDate(weekAgo.getDate() - 7);
-        return new Date(r.createdAt) >= weekAgo;
+        return new Date(dateToCheck) >= weekAgo;
       }
       if (dateRange === 'month') {
         const monthAgo = new Date();
         monthAgo.setMonth(monthAgo.getMonth() - 1);
-        return new Date(r.createdAt) >= monthAgo;
+        return new Date(dateToCheck) >= monthAgo;
       }
       if (dateRange === 'quarter') {
         const quarterAgo = new Date();
         quarterAgo.setMonth(quarterAgo.getMonth() - 3);
-        return new Date(r.createdAt) >= quarterAgo;
+        return new Date(dateToCheck) >= quarterAgo;
       }
       return true;
     });
@@ -74,12 +76,9 @@ export default function Statistics() {
     const deviceUtilizationHeaders = ['设备名称', '型号', '所属实验室', '使用次数', '总时长(小时)', '利用率(%)', '产生费用(元)'];
     const deviceUtilizationRows = devices.map((device) => {
       const lab = mockLabs.find((l) => l.id === device.labId);
-      const deviceReservations = filteredReservations.filter((r) => r.deviceId === device.id && r.status !== 'rejected' && r.status !== 'cancelled');
+      const deviceReservations = filteredReservations.filter((r) => r.deviceId === device.id);
       const usageCount = deviceReservations.length;
-      const totalHours = deviceReservations.reduce((sum, r) => {
-        if (r.usageDuration) return sum + r.usageDuration;
-        return sum + Math.max(1, Math.round((new Date(r.endTime).getTime() - new Date(r.startTime).getTime()) / (1000 * 60 * 60)));
-      }, 0);
+      const totalHours = deviceReservations.reduce((sum, r) => sum + (r.usageDuration || 0), 0);
       const utilization = Math.min(100, Math.round((totalHours / (30 * 8)) * 100));
       const revenue = deviceReservations.reduce((sum, r) => sum + (r.totalCost || 0), 0);
       return [device.name, device.model, lab?.name || '', usageCount, totalHours, utilization, revenue];
@@ -104,7 +103,7 @@ export default function Statistics() {
 
     const billingHeaders = ['设备名称', '使用次数', '总时长(小时)', '总费用(元)', '平均每小时费用(元)'];
     const billingRows = devices.map((device) => {
-      const deviceReservations = filteredReservations.filter((r) => r.deviceId === device.id && (r.status === 'completed' || r.status === 'approved'));
+      const deviceReservations = filteredReservations.filter((r) => r.deviceId === device.id);
       const usageCount = deviceReservations.length;
       const totalHours = deviceReservations.reduce((sum, r) => sum + (r.usageDuration || 0), 0);
       const totalCost = deviceReservations.reduce((sum, r) => sum + (r.totalCost || 0), 0);
@@ -289,9 +288,10 @@ export default function Statistics() {
     }
   }, []);
 
-  const totalRevenue = reservations
-    .filter((r) => r.status === 'completed')
-    .reduce((sum, r) => sum + (r.totalCost || 0), 0);
+  const completedReservations = reservations.filter((r) => r.status === 'completed');
+  const totalRevenue = completedReservations.reduce((sum, r) => sum + (r.totalCost || 0), 0);
+  const totalUsageCount = completedReservations.length;
+  const totalUsageHours = completedReservations.reduce((sum, r) => sum + (r.usageDuration || 0), 0);
 
   return (
     <div className="space-y-6">
@@ -331,11 +331,11 @@ export default function Statistics() {
           trendUp
         />
         <StatCard
-          title="总预约次数"
-          value={reservations.length}
+          title="使用次数"
+          value={totalUsageCount}
           icon={Calendar}
           color="blue"
-          trend="12% 较上月"
+          trend="累计使用"
           trendUp
         />
         <StatCard
@@ -399,40 +399,49 @@ export default function Statistics() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {devices.slice(0, 5).map((device, index) => {
-                const lab = mockLabs.find((l) => l.id === device.labId);
-                const usageCount = reservations.filter((r) => r.deviceId === device.id && r.status !== 'rejected' && r.status !== 'cancelled').length;
-                const utilization = Math.floor(Math.random() * 30 + 50);
-                return (
-                  <tr key={device.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4">
-                      <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold ${
-                        index === 0 ? 'bg-yellow-100 text-yellow-700' :
-                        index === 1 ? 'bg-gray-100 text-gray-700' :
-                        index === 2 ? 'bg-orange-100 text-orange-700' :
-                        'bg-gray-50 text-gray-500'
-                      }`}>
-                        {index + 1}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-sm font-medium text-gray-900">{device.name}</td>
-                    <td className="px-6 py-4 text-sm text-gray-600">{lab?.name}</td>
-                    <td className="px-6 py-4 text-sm text-gray-600">{usageCount} 次</td>
-                    <td className="px-6 py-4 text-sm text-gray-600">{usageCount * 4} 小时</td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <div className="w-24 h-2 bg-gray-100 rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-green-500 rounded-full"
-                            style={{ width: `${utilization}%` }}
-                          />
+              {devices
+                .map((device) => {
+                  const lab = mockLabs.find((l) => l.id === device.labId);
+                  const deviceReservations = completedReservations.filter((r) => r.deviceId === device.id);
+                  const usageCount = deviceReservations.length;
+                  const totalHours = deviceReservations.reduce((sum, r) => sum + (r.usageDuration || 0), 0);
+                  const utilization = Math.min(100, Math.round((totalHours / (30 * 8)) * 100));
+                  return { device, lab, usageCount, totalHours, utilization };
+                })
+                .sort((a, b) => b.usageCount - a.usageCount)
+                .slice(0, 5)
+                .map((item, index) => {
+                  const { device, lab, usageCount, totalHours, utilization } = item;
+                  return (
+                    <tr key={device.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4">
+                        <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold ${
+                          index === 0 ? 'bg-yellow-100 text-yellow-700' :
+                          index === 1 ? 'bg-gray-100 text-gray-700' :
+                          index === 2 ? 'bg-orange-100 text-orange-700' :
+                          'bg-gray-50 text-gray-500'
+                        }`}>
+                          {index + 1}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-sm font-medium text-gray-900">{device.name}</td>
+                      <td className="px-6 py-4 text-sm text-gray-600">{lab?.name}</td>
+                      <td className="px-6 py-4 text-sm text-gray-600">{usageCount} 次</td>
+                      <td className="px-6 py-4 text-sm text-gray-600">{totalHours} 小时</td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <div className="w-24 h-2 bg-gray-100 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-green-500 rounded-full"
+                              style={{ width: `${utilization}%` }}
+                            />
+                          </div>
+                          <span className="text-sm text-gray-600">{utilization}%</span>
                         </div>
-                        <span className="text-sm text-gray-600">{utilization}%</span>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
+                      </td>
+                    </tr>
+                  );
+                })}
             </tbody>
           </table>
         </div>
