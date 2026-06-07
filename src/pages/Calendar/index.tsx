@@ -20,6 +20,7 @@ export default function CalendarPage() {
   const [showModal, setShowModal] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState<{ date: Date; hour: number } | null>(null);
   const [formData, setFormData] = useState({
+    userId: '',
     deviceId: '',
     purpose: '',
     startTime: '',
@@ -56,6 +57,7 @@ export default function CalendarPage() {
   const handleSlotClick = (date: Date, hour: number) => {
     setSelectedSlot({ date, hour });
     setFormData({
+      userId: currentUser.id,
       deviceId: selectedDevice === 'all' ? devices[0]?.id || '' : selectedDevice,
       purpose: '',
       startTime: `${formatDate(date)} ${String(hour).padStart(2, '0')}:00`,
@@ -66,25 +68,26 @@ export default function CalendarPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.deviceId || !formData.purpose) return;
+    if (!formData.userId || !formData.deviceId || !formData.purpose) return;
 
     const device = devices.find((d) => d.id === formData.deviceId);
+    const selectedUser = users.find((u) => u.id === formData.userId);
     if (device?.categoryId === 'c4') {
       const hasValidTraining = trainings.some((t) =>
         t.deviceId === device.id &&
-        t.userId === currentUser.id &&
+        t.userId === formData.userId &&
         t.result === 'passed' &&
         (!t.expiryDate || new Date(t.expiryDate) > new Date())
       );
       if (!hasValidTraining) {
-        alert('该设备为大型精密仪器，您尚未通过有效的操作培训，无法预约！请先参加培训并通过考核。');
+        alert(`${selectedUser?.name || '该用户'}尚未通过${device.name}的有效操作培训，无法预约！请先参加培训并通过考核。`);
         return;
       }
     }
 
     const newReservation = {
       id: `r${Date.now()}`,
-      userId: currentUser.id,
+      userId: formData.userId,
       deviceId: formData.deviceId,
       startTime: new Date(formData.startTime.replace(' ', 'T')).toISOString(),
       endTime: new Date(formData.endTime.replace(' ', 'T')).toISOString(),
@@ -94,7 +97,7 @@ export default function CalendarPage() {
     };
     addReservation(newReservation);
     setShowModal(false);
-    setFormData({ deviceId: '', purpose: '', startTime: '', endTime: '' });
+    setFormData({ userId: '', deviceId: '', purpose: '', startTime: '', endTime: '' });
   };
 
   const calendarDays = [];
@@ -128,6 +131,13 @@ export default function CalendarPage() {
           <button
             onClick={() => {
               setSelectedSlot(null);
+              setFormData({
+                userId: currentUser.id,
+                deviceId: '',
+                purpose: '',
+                startTime: formatDate(new Date()) + ' 09:00',
+                endTime: formatDate(new Date()) + ' 11:00',
+              });
               setShowModal(true);
             }}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
@@ -285,6 +295,20 @@ export default function CalendarPage() {
             <h3 className="text-lg font-semibold mb-4">新建预约</h3>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">预约人</label>
+                <select
+                  value={formData.userId}
+                  onChange={(e) => setFormData({ ...formData, userId: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                >
+                  <option value="">请选择预约人</option>
+                  {users.filter((u) => u.active).map((u) => (
+                    <option key={u.id} value={u.id}>{u.name} - {u.department} ({u.role === 'admin' ? '管理员' : '教师'})</option>
+                  ))}
+                </select>
+              </div>
+              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">选择设备</label>
                 <select
                   value={formData.deviceId}
@@ -297,19 +321,19 @@ export default function CalendarPage() {
                     <option key={d.id} value={d.id}>{d.name} - ¥{d.hourlyRate}/时</option>
                   ))}
                 </select>
-                {formData.deviceId && devices.find((d) => d.id === formData.deviceId)?.categoryId === 'c4' && (
+                {formData.userId && formData.deviceId && devices.find((d) => d.id === formData.deviceId)?.categoryId === 'c4' && (
                   <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded-lg flex items-start gap-2">
                     <AlertTriangle className="w-4 h-4 text-yellow-600 flex-shrink-0 mt-0.5" />
                     <div className="text-xs text-yellow-700">
                       {trainings.some((t) =>
                         t.deviceId === formData.deviceId &&
-                        t.userId === currentUser.id &&
+                        t.userId === formData.userId &&
                         t.result === 'passed' &&
                         (!t.expiryDate || new Date(t.expiryDate) > new Date())
                       ) ? (
-                        <span className="text-green-600 font-medium">✓ 您已持有该设备的有效培训资质</span>
+                        <span className="text-green-600 font-medium">✓ 该用户已持有该设备的有效培训资质</span>
                       ) : (
-                        <span>该设备为大型精密仪器，需要通过专门培训后方可预约使用</span>
+                        <span>该设备为大型精密仪器，该用户尚未通过有效操作培训</span>
                       )}
                     </div>
                   </div>

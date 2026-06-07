@@ -349,7 +349,9 @@ export default function Safety() {
                     {trainings.map((training) => {
                       const device = devices.find((d) => d.id === training.deviceId);
                       const user = users.find((u) => u.id === training.userId);
-                      const hasAccess = training.result === 'passed';
+                      const isPassed = training.result === 'passed';
+                      const isExpired = training.expiryDate && new Date(training.expiryDate) <= new Date();
+                      const hasAccess = isPassed && !isExpired;
                       return (
                         <tr key={training.id} className="hover:bg-gray-50">
                           <td className="px-4 py-3 text-sm font-medium">{device?.name}</td>
@@ -363,9 +365,11 @@ export default function Safety() {
                               'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium',
                               hasAccess
                                 ? 'bg-green-100 text-green-700'
+                                : isExpired
+                                ? 'bg-orange-100 text-orange-700'
                                 : 'bg-gray-100 text-gray-500'
                             )}>
-                              {hasAccess ? '已准入' : '未通过'}
+                              {hasAccess ? '已准入' : isExpired ? '已过期' : '未通过'}
                             </span>
                           </td>
                         </tr>
@@ -526,8 +530,8 @@ export default function Safety() {
                   required
                 >
                   <option value="">请选择人员</option>
-                  {users.filter((u) => u.role === 'teacher').map((u) => (
-                    <option key={u.id} value={u.id}>{u.name} - {u.department}</option>
+                  {users.filter((u) => u.active).map((u) => (
+                    <option key={u.id} value={u.id}>{u.name} - {u.department} ({u.role === 'admin' ? '管理员' : '教师'})</option>
                   ))}
                 </select>
               </div>

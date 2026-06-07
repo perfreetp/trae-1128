@@ -33,7 +33,9 @@ export default function Statistics() {
   };
 
   const handleExport = () => {
-    const completedReservations = reservations.filter((r) => r.status === 'completed');
+    const completedReservations = reservations.filter((r) => 
+      r.status === 'completed' && r.usageDuration && r.usageDuration > 0 && r.totalCost
+    );
     const filteredReservations = completedReservations.filter((r) => {
       const dateToCheck = r.actualStartTime || r.startTime;
       if (dateRange === 'week') {
@@ -288,7 +290,9 @@ export default function Statistics() {
     }
   }, []);
 
-  const completedReservations = reservations.filter((r) => r.status === 'completed');
+  const completedReservations = reservations.filter((r) => 
+    r.status === 'completed' && r.usageDuration && r.usageDuration > 0 && r.totalCost
+  );
   const totalRevenue = completedReservations.reduce((sum, r) => sum + (r.totalCost || 0), 0);
   const totalUsageCount = completedReservations.length;
   const totalUsageHours = completedReservations.reduce((sum, r) => sum + (r.usageDuration || 0), 0);

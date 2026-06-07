@@ -26,6 +26,50 @@ import {
   mockInspections,
   mockMaterials,
 } from '@/data/mockData';
+import { generateId } from '@/utils';
+
+const generateInitialMaintenanceLogs = (): MaintenanceLog[] => {
+  const logs: MaintenanceLog[] = [];
+  
+  mockWorkOrders.forEach((order) => {
+    const baseTime = new Date(order.createdAt).getTime();
+    
+    if (order.status !== 'pending') {
+      logs.push({
+        id: generateId(),
+        workOrderId: order.id,
+        handlerId: 'u1',
+        action: '派单',
+        description: '工单已派发给维修人员',
+        createdAt: new Date(baseTime + 10 * 60 * 1000).toISOString(),
+      });
+    }
+    
+    if (order.status === 'processing' || order.status === 'completed') {
+      logs.push({
+        id: generateId(),
+        workOrderId: order.id,
+        handlerId: order.assigneeId || 'u4',
+        action: '开始处理',
+        description: '维修人员开始处理故障',
+        createdAt: new Date(baseTime + 30 * 60 * 1000).toISOString(),
+      });
+    }
+    
+    if (order.status === 'completed') {
+      logs.push({
+        id: generateId(),
+        workOrderId: order.id,
+        handlerId: order.assigneeId || 'u4',
+        action: '完成维修',
+        description: '故障已修复，工单完成',
+        createdAt: order.completedAt || new Date(baseTime + 2 * 60 * 60 * 1000).toISOString(),
+      });
+    }
+  });
+  
+  return logs;
+};
 
 interface AppState {
   currentUser: User;
@@ -86,7 +130,7 @@ export const useAppStore = create<AppState>((set) => ({
   inspections: mockInspections,
   materials: mockMaterials,
   usageRecords: [],
-  maintenanceLogs: [],
+  maintenanceLogs: generateInitialMaintenanceLogs(),
   materialUsages: [],
 
   setCurrentUser: (user) => set({ currentUser: user }),
