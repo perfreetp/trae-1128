@@ -9,17 +9,50 @@ import {
   AlertOctagon,
   Bell,
   Plus,
+  X,
+  Save,
 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import StatusBadge from '@/components/StatusBadge';
 import StatCard from '@/components/StatCard';
-import { formatDate, cn } from '@/utils';
+import { formatDate, cn, generateId } from '@/utils';
+import type { Inspection, Training, Calibration } from '@/types';
 
 type TabType = 'inspections' | 'calibrations' | 'trainings' | 'violations';
 
 export default function Safety() {
-  const { inspections, calibrations, trainings, violations, devices, users } = useAppStore();
+  const {
+    inspections,
+    calibrations,
+    trainings,
+    violations,
+    devices,
+    users,
+    addInspection,
+    addTraining,
+    addCalibration,
+    updateDevice,
+    currentUser,
+  } = useAppStore();
+  
   const [activeTab, setActiveTab] = useState<TabType>('inspections');
+  const [showInspectionModal, setShowInspectionModal] = useState(false);
+  const [showTrainingModal, setShowTrainingModal] = useState(false);
+  
+  const [inspectionForm, setInspectionForm] = useState({
+    title: '',
+    inspectionDate: new Date().toISOString().slice(0, 10),
+    notes: '',
+  });
+  
+  const [trainingForm, setTrainingForm] = useState({
+    deviceId: '',
+    userId: '',
+    trainingDate: new Date().toISOString().slice(0, 10),
+    trainer: '',
+    result: 'passed' as 'passed' | 'failed',
+    expiryDate: '',
+  });
 
   const tabs: { key: TabType; label: string; icon: any }[] = [
     { key: 'inspections', label: '安全检查', icon: Shield },
@@ -35,6 +68,73 @@ export default function Safety() {
     const daysUntil = Math.ceil((nextCal.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
     return daysUntil <= 30;
   });
+
+  const handleAddInspection = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inspectionForm.title) return;
+
+    const newInspection: Inspection = {
+      id: generateId(),
+      title: inspectionForm.title,
+      inspectorId: currentUser.id,
+      inspectionDate: inspectionForm.inspectionDate,
+      status: 'scheduled',
+      notes: inspectionForm.notes,
+    };
+    addInspection(newInspection);
+    setShowInspectionModal(false);
+    setInspectionForm({ title: '', inspectionDate: new Date().toISOString().slice(0, 10), notes: '' });
+  };
+
+  const handleAddTraining = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!trainingForm.deviceId || !trainingForm.userId || !trainingForm.trainer) return;
+
+    const newTraining: Training = {
+      id: generateId(),
+      deviceId: trainingForm.deviceId,
+      userId: trainingForm.userId,
+      trainingDate: trainingForm.trainingDate,
+      trainer: trainingForm.trainer,
+      result: trainingForm.result,
+      expiryDate: trainingForm.expiryDate || undefined,
+    };
+    addTraining(newTraining);
+    setShowTrainingModal(false);
+    setTrainingForm({
+      deviceId: '',
+      userId: '',
+      trainingDate: new Date().toISOString().slice(0, 10),
+      trainer: '',
+      result: 'passed',
+      expiryDate: '',
+    });
+  };
+
+  const handleCalibrate = (deviceId: string) => {
+    const device = devices.find((d) => d.id === deviceId);
+    if (!device) return;
+
+    const now = new Date();
+    const nextCal = new Date(now.getTime() + (device.calibrationCycleDays || 90) * 24 * 60 * 60 * 1000);
+
+    const newCalibration: Calibration = {
+      id: generateId(),
+      deviceId,
+      calibrationDate: now.toISOString().slice(0, 10),
+      nextCalibrationDate: nextCal.toISOString().slice(0, 10),
+      calibrator: currentUser.name,
+      result: 'passed',
+    };
+    addCalibration(newCalibration);
+    updateDevice(deviceId, { lastCalibration: now.toISOString().slice(0, 10) });
+  };
+
+  const isUserTrainedForDevice = (userId: string, deviceId: string) => {
+    return trainings.some(
+      (t) => t.userId === userId && t.deviceId === deviceId && t.result === 'passed'
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -100,7 +200,10 @@ export default function Safety() {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="font-semibold text-gray-900">安全检查计划</h3>
-                <button className="flex items-center gap-2 px-3 py-1.5 text-sm bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors">
+                <button
+                  onClick={() => setShowInspectionModal(true)}
+                  className="flex items-center gap-2 px-3 py-1.5 text-sm bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
+                >
                   <Plus className="w-4 h-4" />
                   新建检查
                 </button>
@@ -139,6 +242,12 @@ export default function Safety() {
                   </tbody>
                 </table>
               </div>
+              {inspections.length === 0 && (
+                <div className="p-8 text-center text-gray-500">
+                  <Shield className="w-12 h-12 text-gray-300 mx-auto mb-2" />
+                  <p>暂无安全检查记录</p>
+                </div>
+              )}
             </div>
           )}
 
@@ -187,12 +296,15 @@ export default function Safety() {
                           </span>
                         </div>
                       </div>
-                      <button className={cn(
-                        'w-full mt-3 py-1.5 text-sm rounded-lg font-medium transition-colors',
-                        isOverdue
-                          ? 'bg-red-100 text-red-700 hover:bg-red-200'
-                          : 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'
-                      )}>
+                      <button
+                        onClick={() => handleCalibrate(device.id)}
+                        className={cn(
+                          'w-full mt-3 py-1.5 text-sm rounded-lg font-medium transition-colors',
+                          isOverdue
+                            ? 'bg-red-100 text-red-700 hover:bg-red-200'
+                            : 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'
+                        )}
+                      >
                         立即校准
                       </button>
                     </div>
@@ -212,7 +324,10 @@ export default function Safety() {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="font-semibold text-gray-900">培训记录</h3>
-                <button className="flex items-center gap-2 px-3 py-1.5 text-sm bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors">
+                <button
+                  onClick={() => setShowTrainingModal(true)}
+                  className="flex items-center gap-2 px-3 py-1.5 text-sm bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
+                >
                   <Plus className="w-4 h-4" />
                   新增培训
                 </button>
@@ -227,12 +342,14 @@ export default function Safety() {
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">培训师</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">结果</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">有效期至</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">准入状态</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {trainings.map((training) => {
                       const device = devices.find((d) => d.id === training.deviceId);
                       const user = users.find((u) => u.id === training.userId);
+                      const hasAccess = training.result === 'passed';
                       return (
                         <tr key={training.id} className="hover:bg-gray-50">
                           <td className="px-4 py-3 text-sm font-medium">{device?.name}</td>
@@ -241,12 +358,28 @@ export default function Safety() {
                           <td className="px-4 py-3 text-sm text-gray-600">{training.trainer}</td>
                           <td className="px-4 py-3"><StatusBadge status={training.result} /></td>
                           <td className="px-4 py-3 text-sm text-gray-600">{training.expiryDate ? formatDate(training.expiryDate) : '-'}</td>
+                          <td className="px-4 py-3">
+                            <span className={cn(
+                              'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium',
+                              hasAccess
+                                ? 'bg-green-100 text-green-700'
+                                : 'bg-gray-100 text-gray-500'
+                            )}>
+                              {hasAccess ? '已准入' : '未通过'}
+                            </span>
+                          </td>
                         </tr>
                       );
                     })}
                   </tbody>
                 </table>
               </div>
+              {trainings.length === 0 && (
+                <div className="p-8 text-center text-gray-500">
+                  <GraduationCap className="w-12 h-12 text-gray-300 mx-auto mb-2" />
+                  <p>暂无培训记录</p>
+                </div>
+              )}
             </div>
           )}
 
@@ -292,6 +425,174 @@ export default function Safety() {
           )}
         </div>
       </div>
+
+      {showInspectionModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">新建安全检查</h3>
+              <button
+                onClick={() => setShowInspectionModal(false)}
+                className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+            <form onSubmit={handleAddInspection} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">检查名称 *</label>
+                <input
+                  type="text"
+                  value={inspectionForm.title}
+                  onChange={(e) => setInspectionForm({ ...inspectionForm, title: e.target.value })}
+                  placeholder="请输入检查名称"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">检查日期</label>
+                <input
+                  type="date"
+                  value={inspectionForm.inspectionDate}
+                  onChange={(e) => setInspectionForm({ ...inspectionForm, inspectionDate: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">备注</label>
+                <textarea
+                  value={inspectionForm.notes}
+                  onChange={(e) => setInspectionForm({ ...inspectionForm, notes: e.target.value })}
+                  placeholder="检查备注..."
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                  rows={3}
+                />
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowInspectionModal(false)}
+                  className="flex-1 px-4 py-2 border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  取消
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+                >
+                  <Save className="w-4 h-4" />
+                  创建
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showTrainingModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">新增培训记录</h3>
+              <button
+                onClick={() => setShowTrainingModal(false)}
+                className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+            <form onSubmit={handleAddTraining} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">培训设备 *</label>
+                <select
+                  value={trainingForm.deviceId}
+                  onChange={(e) => setTrainingForm({ ...trainingForm, deviceId: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                >
+                  <option value="">请选择设备</option>
+                  {devices.map((d) => (
+                    <option key={d.id} value={d.id}>{d.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">培训人员 *</label>
+                <select
+                  value={trainingForm.userId}
+                  onChange={(e) => setTrainingForm({ ...trainingForm, userId: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                >
+                  <option value="">请选择人员</option>
+                  {users.filter((u) => u.role === 'teacher').map((u) => (
+                    <option key={u.id} value={u.id}>{u.name} - {u.department}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">培训日期</label>
+                  <input
+                    type="date"
+                    value={trainingForm.trainingDate}
+                    onChange={(e) => setTrainingForm({ ...trainingForm, trainingDate: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">有效期至</label>
+                  <input
+                    type="date"
+                    value={trainingForm.expiryDate}
+                    onChange={(e) => setTrainingForm({ ...trainingForm, expiryDate: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">培训师 *</label>
+                <input
+                  type="text"
+                  value={trainingForm.trainer}
+                  onChange={(e) => setTrainingForm({ ...trainingForm, trainer: e.target.value })}
+                  placeholder="请输入培训师姓名"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">培训结果</label>
+                <select
+                  value={trainingForm.result}
+                  onChange={(e) => setTrainingForm({ ...trainingForm, result: e.target.value as 'passed' | 'failed' })}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="passed">通过</option>
+                  <option value="failed">未通过</option>
+                </select>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowTrainingModal(false)}
+                  className="flex-1 px-4 py-2 border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  取消
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+                >
+                  <Save className="w-4 h-4" />
+                  保存
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

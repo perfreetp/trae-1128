@@ -8,10 +8,16 @@ import {
   MessageSquare,
   Package,
   Filter,
+  X,
+  Save,
+  Minus,
+  CheckCircle2,
+  History,
 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import StatusBadge from '@/components/StatusBadge';
-import { formatDateTime, cn } from '@/utils';
+import { formatDateTime, cn, generateId } from '@/utils';
+import type { WorkOrder, MaterialUsage, MaintenanceLog } from '@/types';
 
 const statusColumns = [
   { key: 'pending', label: '待派单', color: 'bg-orange-50' },
@@ -22,9 +28,24 @@ const statusColumns = [
 ];
 
 export default function Maintenance() {
-  const { workOrders, devices, users, materials, addWorkOrder, updateWorkOrder, currentUser } = useAppStore();
+  const {
+    workOrders,
+    devices,
+    users,
+    materials,
+    addWorkOrder,
+    updateWorkOrder,
+    currentUser,
+    addMaterialUsage,
+    updateMaterialStock,
+    addMaintenanceLog,
+  } = useAppStore();
+  
   const [showModal, setShowModal] = useState(false);
-  const [selectedOrder, setSelectedOrder] = useState<string | null>(null);
+  const [showDetailModal, setShowDetailModal] = useState(false);
+  const [selectedOrder, setSelectedOrder] = useState<WorkOrder | null>(null);
+  const [selectedMaterialId, setSelectedMaterialId] = useState('');
+  const [materialQuantity, setMaterialQuantity] = useState(1);
   const [formData, setFormData] = useState({
     deviceId: '',
     title: '',
@@ -40,14 +61,14 @@ export default function Maintenance() {
     e.preventDefault();
     if (!formData.deviceId || !formData.title) return;
 
-    const newOrder = {
-      id: `wo${Date.now()}`,
+    const newOrder: WorkOrder = {
+      id: generateId(),
       deviceId: formData.deviceId,
       reporterId: currentUser.id,
       title: formData.title,
       description: formData.description,
       priority: formData.priority,
-      status: 'pending' as const,
+      status: 'pending',
       createdAt: new Date().toISOString(),
     };
     addWorkOrder(newOrder);
@@ -55,17 +76,86 @@ export default function Maintenance() {
     setFormData({ deviceId: '', title: '', description: '', priority: 'medium' });
   };
 
+  const handleOpenDetail = (order: WorkOrder) => {
+    setSelectedOrder(order);
+    setShowDetailModal(true);
+    setSelectedMaterialId('');
+    setMaterialQuantity(1);
+  };
+
   const handleAssign = (orderId: string) => {
     updateWorkOrder(orderId, { status: 'assigned', assigneeId: 'u4' });
+    if (selectedOrder?.id === orderId) {
+      setSelectedOrder({ ...selectedOrder, status: 'assigned', assigneeId: 'u4' });
+    }
+    const log: MaintenanceLog = {
+      id: generateId(),
+      workOrderId: orderId,
+      handlerId: currentUser.id,
+      action: '派单',
+      description: '工单已派发给维修人员',
+      createdAt: new Date().toISOString(),
+    };
+    addMaintenanceLog(log);
   };
 
   const handleStartProcess = (orderId: string) => {
     updateWorkOrder(orderId, { status: 'processing' });
+    if (selectedOrder?.id === orderId) {
+      setSelectedOrder({ ...selectedOrder, status: 'processing' });
+    }
+    const log: MaintenanceLog = {
+      id: generateId(),
+      workOrderId: orderId,
+      handlerId: 'u4',
+      action: '开始处理',
+      description: '维修人员开始处理故障',
+      createdAt: new Date().toISOString(),
+    };
+    addMaintenanceLog(log);
+  };
+
+  const handleAddMaterial = () => {
+    if (!selectedOrder || !selectedMaterialId || materialQuantity <= 0) return;
+
+    const material = materials.find((m) => m.id === selectedMaterialId);
+    if (!material || material.stock < materialQuantity) {
+      alert('库存不足！');
+      return;
+    }
+
+    const usage: MaterialUsage = {
+      id: generateId(),
+      workOrderId: selectedOrder.id,
+      materialId: selectedMaterialId,
+      quantity: materialQuantity,
+    };
+    addMaterialUsage(usage);
+    updateMaterialStock(selectedMaterialId, materialQuantity);
+
+    setSelectedMaterialId('');
+    setMaterialQuantity(1);
   };
 
   const handleComplete = (orderId: string) => {
     updateWorkOrder(orderId, { status: 'completed', completedAt: new Date().toISOString() });
+    if (selectedOrder?.id === orderId) {
+      setSelectedOrder({ ...selectedOrder, status: 'completed', completedAt: new Date().toISOString() });
+    }
+    const log: MaintenanceLog = {
+      id: generateId(),
+      workOrderId: orderId,
+      handlerId: 'u4',
+      action: '完成维修',
+      description: '故障已修复，工单完成',
+      createdAt: new Date().toISOString(),
+    };
+    addMaintenanceLog(log);
   };
+
+  const device = selectedOrder ? devices.find((d) => d.id === selectedOrder.deviceId) : null;
+  const reporter = selectedOrder ? users.find((u) => u.id === selectedOrder.reporterId) : null;
+  const assignee = selectedOrder?.assigneeId ? users.find((u) => u.id === selectedOrder.assigneeId) : null;
 
   return (
     <div className="space-y-6">
@@ -120,7 +210,7 @@ export default function Maintenance() {
                   <div
                     key={order.id}
                     className="bg-white rounded-lg p-4 shadow-sm border border-gray-100 hover:shadow-md transition-shadow cursor-pointer"
-                    onClick={() => setSelectedOrder(order.id)}
+                    onClick={() => handleOpenDetail(order)}
                   >
                     <div className="flex items-start justify-between mb-3">
                       <h4 className="font-medium text-gray-900 text-sm line-clamp-1">{order.title}</h4>
@@ -200,7 +290,12 @@ export default function Maintenance() {
               </div>
               <p className="text-xs text-gray-500 mb-2">{mat.specification}</p>
               <div className="flex items-end justify-between">
-                <span className="text-xl font-bold text-gray-900">{mat.stock}</span>
+                <span className={cn(
+                  'text-xl font-bold',
+                  mat.stock < 5 ? 'text-red-600' : 'text-gray-900'
+                )}>
+                  {mat.stock}
+                </span>
                 <span className="text-xs text-gray-500">{mat.unit}</span>
               </div>
             </div>
@@ -277,6 +372,163 @@ export default function Maintenance() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {showDetailModal && selectedOrder && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white border-b border-gray-100 p-6 flex items-center justify-between">
+              <h3 className="text-lg font-semibold">工单详情</h3>
+              <button
+                onClick={() => setShowDetailModal(false)}
+                className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6">
+              <div className="space-y-4">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h4 className="text-xl font-semibold text-gray-900">{selectedOrder.title}</h4>
+                    <p className="text-sm text-gray-500 mt-1">工单号：{selectedOrder.id}</p>
+                  </div>
+                  <StatusBadge status={selectedOrder.status} />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <p className="text-xs text-gray-500">故障设备</p>
+                    <p className="text-sm font-medium text-gray-900">{device?.name}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-gray-500">优先级</p>
+                    <StatusBadge status={selectedOrder.priority} />
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-gray-500">报修人</p>
+                    <p className="text-sm font-medium text-gray-900">{reporter?.name}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-gray-500">处理人</p>
+                    <p className="text-sm font-medium text-gray-900">{assignee?.name || '未指派'}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-gray-500">创建时间</p>
+                    <p className="text-sm font-medium text-gray-900">{formatDateTime(selectedOrder.createdAt)}</p>
+                  </div>
+                  {selectedOrder.completedAt && (
+                    <div className="space-y-1">
+                      <p className="text-xs text-gray-500">完成时间</p>
+                      <p className="text-sm font-medium text-gray-900">{formatDateTime(selectedOrder.completedAt)}</p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-1">
+                  <p className="text-xs text-gray-500">故障描述</p>
+                  <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded-lg">{selectedOrder.description}</p>
+                </div>
+              </div>
+
+              {(selectedOrder.status === 'processing' || selectedOrder.status === 'assigned') && (
+                <div className="border-t border-gray-100 pt-6">
+                  <h5 className="font-medium text-gray-900 mb-3 flex items-center gap-2">
+                    <Package className="w-4 h-4" />
+                    添加耗材
+                  </h5>
+                  <div className="flex items-end gap-3">
+                    <div className="flex-1">
+                      <label className="block text-xs text-gray-500 mb-1">选择耗材</label>
+                      <select
+                        value={selectedMaterialId}
+                        onChange={(e) => setSelectedMaterialId(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">请选择耗材</option>
+                        {materials.filter((m) => m.stock > 0).map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.name} ({m.specification}) - 库存: {m.stock}{m.unit}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="w-24">
+                      <label className="block text-xs text-gray-500 mb-1">数量</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={materialQuantity}
+                        onChange={(e) => setMaterialQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <button
+                      onClick={handleAddMaterial}
+                      className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-1"
+                    >
+                      <Plus className="w-4 h-4" />
+                      添加
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="border-t border-gray-100 pt-6">
+                <h5 className="font-medium text-gray-900 mb-3 flex items-center gap-2">
+                  <History className="w-4 h-4" />
+                  流转记录
+                </h5>
+                <div className="space-y-3">
+                  <div className="flex gap-3">
+                    <div className="w-8 h-8 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center flex-shrink-0">
+                      <AlertCircle className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-900">工单创建</p>
+                      <p className="text-xs text-gray-500">{formatDateTime(selectedOrder.createdAt)}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-4 border-t border-gray-100">
+                {selectedOrder.status === 'pending' && (
+                  <button
+                    onClick={() => handleAssign(selectedOrder.id)}
+                    className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                  >
+                    立即派单
+                  </button>
+                )}
+                {selectedOrder.status === 'assigned' && (
+                  <button
+                    onClick={() => handleStartProcess(selectedOrder.id)}
+                    className="flex-1 px-4 py-2.5 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors font-medium"
+                  >
+                    开始处理
+                  </button>
+                )}
+                {selectedOrder.status === 'processing' && (
+                  <button
+                    onClick={() => handleComplete(selectedOrder.id)}
+                    className="flex-1 px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium flex items-center justify-center gap-2"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    完成维修
+                  </button>
+                )}
+                <button
+                  onClick={() => setShowDetailModal(false)}
+                  className="px-6 py-2.5 border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  关闭
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

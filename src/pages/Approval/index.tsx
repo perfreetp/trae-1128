@@ -8,19 +8,29 @@ import {
   FileText,
   MessageSquare,
   Filter,
+  Save,
 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import StatusBadge from '@/components/StatusBadge';
-import { formatDateTime, cn } from '@/utils';
+import { formatDateTime, cn, generateId } from '@/utils';
+import type { UsageRecord } from '@/types';
 
 type TabType = 'pending' | 'approved' | 'rejected' | 'completed';
 
 export default function Approval() {
-  const { reservations, devices, users, updateReservation } = useAppStore();
+  const { reservations, devices, users, updateReservation, addUsageRecord, updateDevice } = useAppStore();
   const [activeTab, setActiveTab] = useState<TabType>('pending');
   const [selectedReservation, setSelectedReservation] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
   const [showRejectModal, setShowRejectModal] = useState(false);
+  const [showUsageModal, setShowUsageModal] = useState(false);
+  
+  const [usageForm, setUsageForm] = useState({
+    actualStartTime: '',
+    actualEndTime: '',
+    deviceStatus: 'available' as UsageRecord['deviceStatus'],
+    remarks: '',
+  });
 
   const tabs: { key: TabType; label: string; count: number }[] = [
     { key: 'pending', label: '待审批', count: reservations.filter((r) => r.status === 'pending').length },
@@ -50,6 +60,65 @@ export default function Approval() {
       setRejectReason('');
       setSelectedReservation(null);
     }
+  };
+
+  const handleOpenUsage = (reservation: typeof reservations[0]) => {
+    setSelectedReservation(reservation.id);
+    setUsageForm({
+      actualStartTime: reservation.startTime.slice(0, 16),
+      actualEndTime: reservation.endTime.slice(0, 16),
+      deviceStatus: 'available',
+      remarks: '',
+    });
+    setShowUsageModal(true);
+  };
+
+  const confirmUsage = () => {
+    if (!selectedReservation) return;
+    
+    const reservation = reservations.find((r) => r.id === selectedReservation);
+    if (!reservation) return;
+
+    const startTime = new Date(usageForm.actualStartTime);
+    const endTime = new Date(usageForm.actualEndTime);
+    const durationHours = Math.max(1, Math.round((endTime.getTime() - startTime.getTime()) / (1000 * 60 * 60)));
+    
+    const device = devices.find((d) => d.id === reservation.deviceId);
+    const totalCost = device ? device.hourlyRate * durationHours : 0;
+
+    const usageRecord: UsageRecord = {
+      id: generateId(),
+      reservationId: reservation.id,
+      deviceId: reservation.deviceId,
+      userId: reservation.userId,
+      startTime: usageForm.actualStartTime,
+      endTime: usageForm.actualEndTime,
+      durationHours,
+      deviceStatus: usageForm.deviceStatus,
+      remarks: usageForm.remarks,
+      recordedAt: new Date().toISOString(),
+      recordedBy: 'admin',
+    };
+
+    addUsageRecord(usageRecord);
+    updateReservation(selectedReservation, {
+      status: 'completed',
+      actualStartTime: usageForm.actualStartTime,
+      actualEndTime: usageForm.actualEndTime,
+      usageDuration: durationHours,
+      totalCost,
+    });
+
+    if (usageForm.deviceStatus === 'faulty') {
+      updateDevice(reservation.deviceId, { status: 'faulty' });
+    } else if (usageForm.deviceStatus === 'maintenance') {
+      updateDevice(reservation.deviceId, { status: 'maintenance' });
+    } else {
+      updateDevice(reservation.deviceId, { status: 'available' });
+    }
+
+    setShowUsageModal(false);
+    setSelectedReservation(null);
   };
 
   return (
@@ -171,12 +240,21 @@ export default function Approval() {
                         </div>
                       )}
                       {reservation.status === 'approved' && (
-                        <button className="flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium">
+                        <button
+                          onClick={() => handleOpenUsage(reservation)}
+                          className="flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
+                        >
                           <MessageSquare className="w-4 h-4" />
                           登记使用
                         </button>
                       )}
-                      {reservation.approvalComment && (
+                      {reservation.status === 'completed' && (
+                        <div className="text-sm text-gray-500">
+                          <p>时长: {reservation.usageDuration}小时</p>
+                          <p>费用: ¥{reservation.totalCost}</p>
+                        </div>
+                      )}
+                      {reservation.approvalComment && reservation.status !== 'completed' && (
                         <p className="text-xs text-gray-500 mt-1">{reservation.approvalComment}</p>
                       )}
                     </td>
@@ -222,6 +300,74 @@ export default function Approval() {
                   className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
                 >
                   确认驳回
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showUsageModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl w-full max-w-lg p-6">
+            <h3 className="text-lg font-semibold mb-4">登记使用</h3>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">实际开始时间</label>
+                  <input
+                    type="datetime-local"
+                    value={usageForm.actualStartTime}
+                    onChange={(e) => setUsageForm({ ...usageForm, actualStartTime: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">实际结束时间</label>
+                  <input
+                    type="datetime-local"
+                    value={usageForm.actualEndTime}
+                    onChange={(e) => setUsageForm({ ...usageForm, actualEndTime: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">使用后设备状态</label>
+                <select
+                  value={usageForm.deviceStatus}
+                  onChange={(e) => setUsageForm({ ...usageForm, deviceStatus: e.target.value as UsageRecord['deviceStatus'] })}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="available">正常可用</option>
+                  <option value="in_use">使用中</option>
+                  <option value="maintenance">需维护</option>
+                  <option value="faulty">故障</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">使用备注</label>
+                <textarea
+                  value={usageForm.remarks}
+                  onChange={(e) => setUsageForm({ ...usageForm, remarks: e.target.value })}
+                  placeholder="请填写使用情况、设备运行状况等..."
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                  rows={3}
+                />
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => setShowUsageModal(false)}
+                  className="flex-1 px-4 py-2 border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={confirmUsage}
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+                >
+                  <Save className="w-4 h-4" />
+                  保存登记
                 </button>
               </div>
             </div>

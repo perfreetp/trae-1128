@@ -11,22 +11,35 @@ import {
   ToggleLeft,
   ToggleRight,
   Plus,
+  X,
+  Save,
 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
-import StatusBadge from '@/components/StatusBadge';
-import { formatDateTime, cn } from '@/utils';
+import { formatDateTime, cn, generateId } from '@/utils';
+import type { User } from '@/types';
 
 type TabType = 'users' | 'roles' | 'announcements';
 
 export default function UsersPage() {
-  const { users, announcements, addAnnouncement, currentUser } = useAppStore();
+  const { users, announcements, addAnnouncement, currentUser, addUser, updateUser, deleteUser, toggleUserActive } = useAppStore();
   const [activeTab, setActiveTab] = useState<TabType>('users');
   const [searchQuery, setSearchQuery] = useState('');
   const [showAnnouncementModal, setShowAnnouncementModal] = useState(false);
+  const [showUserModal, setShowUserModal] = useState(false);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const [announcementForm, setAnnouncementForm] = useState({
     title: '',
     content: '',
     important: false,
+  });
+  const [userForm, setUserForm] = useState({
+    name: '',
+    email: '',
+    department: '',
+    phone: '',
+    role: 'teacher' as User['role'],
+    active: true,
   });
 
   const tabs: { key: TabType; label: string; icon: any; count: number }[] = [
@@ -40,12 +53,59 @@ export default function UsersPage() {
     u.email.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const handleOpenAddUser = () => {
+    setEditingUser(null);
+    setUserForm({
+      name: '',
+      email: '',
+      department: '',
+      phone: '',
+      role: 'teacher',
+      active: true,
+    });
+    setShowUserModal(true);
+  };
+
+  const handleOpenEditUser = (user: User) => {
+    setEditingUser(user);
+    setUserForm({
+      name: user.name,
+      email: user.email,
+      department: user.department,
+      phone: user.phone,
+      role: user.role,
+      active: user.active,
+    });
+    setShowUserModal(true);
+  };
+
+  const handleSaveUser = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userForm.name || !userForm.email) return;
+
+    if (editingUser) {
+      updateUser(editingUser.id, userForm);
+    } else {
+      const newUser: User = {
+        id: generateId(),
+        ...userForm,
+      };
+      addUser(newUser);
+    }
+    setShowUserModal(false);
+  };
+
+  const handleDeleteUser = (id: string) => {
+    deleteUser(id);
+    setShowDeleteConfirm(null);
+  };
+
   const handlePublishAnnouncement = (e: React.FormEvent) => {
     e.preventDefault();
     if (!announcementForm.title || !announcementForm.content) return;
 
     const newAnnouncement = {
-      id: `a${Date.now()}`,
+      id: generateId(),
       title: announcementForm.title,
       content: announcementForm.content,
       authorId: currentUser.id,
@@ -132,7 +192,10 @@ export default function UsersPage() {
                     className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
-                <button className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium">
+                <button
+                  onClick={handleOpenAddUser}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                >
                   <UserPlus className="w-4 h-4" />
                   添加用户
                 </button>
@@ -188,17 +251,29 @@ export default function UsersPage() {
                         </td>
                         <td className="px-4 py-4">
                           <div className="flex items-center gap-1">
-                            <button className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
+                            <button
+                              onClick={() => handleOpenEditUser(user)}
+                              className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                              title="编辑"
+                            >
                               <Edit className="w-4 h-4" />
                             </button>
-                            <button className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
+                            <button
+                              onClick={() => toggleUserActive(user.id)}
+                              className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                              title={user.active ? '禁用' : '启用'}
+                            >
                               {user.active ? (
                                 <ToggleRight className="w-4 h-4 text-green-500" />
                               ) : (
                                 <ToggleLeft className="w-4 h-4 text-gray-400" />
                               )}
                             </button>
-                            <button className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                            <button
+                              onClick={() => setShowDeleteConfirm(user.id)}
+                              className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                              title="删除"
+                            >
                               <Trash2 className="w-4 h-4" />
                             </button>
                           </div>
@@ -208,6 +283,13 @@ export default function UsersPage() {
                   </tbody>
                 </table>
               </div>
+
+              {filteredUsers.length === 0 && (
+                <div className="p-12 text-center">
+                  <Users className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                  <p className="text-gray-500">暂无匹配的用户</p>
+                </div>
+              )}
             </div>
           )}
 
@@ -321,6 +403,128 @@ export default function UsersPage() {
           )}
         </div>
       </div>
+
+      {showUserModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl w-full max-w-lg p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">{editingUser ? '编辑用户' : '添加用户'}</h3>
+              <button
+                onClick={() => setShowUserModal(false)}
+                className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+            <form onSubmit={handleSaveUser} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">姓名 *</label>
+                <input
+                  type="text"
+                  value={userForm.name}
+                  onChange={(e) => setUserForm({ ...userForm, name: e.target.value })}
+                  placeholder="请输入姓名"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">邮箱 *</label>
+                <input
+                  type="email"
+                  value={userForm.email}
+                  onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
+                  placeholder="请输入邮箱"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">部门</label>
+                  <input
+                    type="text"
+                    value={userForm.department}
+                    onChange={(e) => setUserForm({ ...userForm, department: e.target.value })}
+                    placeholder="请输入部门"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">联系电话</label>
+                  <input
+                    type="tel"
+                    value={userForm.phone}
+                    onChange={(e) => setUserForm({ ...userForm, phone: e.target.value })}
+                    placeholder="请输入电话"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">角色</label>
+                <select
+                  value={userForm.role}
+                  onChange={(e) => setUserForm({ ...userForm, role: e.target.value as User['role'] })}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="teacher">教师</option>
+                  <option value="admin">管理员</option>
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="userActive"
+                  checked={userForm.active}
+                  onChange={(e) => setUserForm({ ...userForm, active: e.target.checked })}
+                  className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                />
+                <label htmlFor="userActive" className="text-sm text-gray-700">启用账号</label>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowUserModal(false)}
+                  className="flex-1 px-4 py-2 border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  取消
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+                >
+                  <Save className="w-4 h-4" />
+                  {editingUser ? '保存修改' : '添加用户'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl w-full max-w-md p-6">
+            <h3 className="text-lg font-semibold mb-2">确认删除</h3>
+            <p className="text-gray-600 mb-6">确定要删除该用户吗？此操作不可撤销。</p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowDeleteConfirm(null)}
+                className="flex-1 px-4 py-2 border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={() => handleDeleteUser(showDeleteConfirm)}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+              >
+                确认删除
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showAnnouncementModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">

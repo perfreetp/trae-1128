@@ -10,6 +10,9 @@ import type {
   Announcement,
   Inspection,
   Material,
+  UsageRecord,
+  MaintenanceLog,
+  MaterialUsage,
 } from '@/types';
 import {
   mockUsers,
@@ -36,14 +39,38 @@ interface AppState {
   announcements: Announcement[];
   inspections: Inspection[];
   materials: Material[];
+  usageRecords: UsageRecord[];
+  maintenanceLogs: MaintenanceLog[];
+  materialUsages: MaterialUsage[];
   
   setCurrentUser: (user: User) => void;
+  
+  addUser: (user: User) => void;
+  updateUser: (id: string, data: Partial<User>) => void;
+  deleteUser: (id: string) => void;
+  toggleUserActive: (id: string) => void;
+  
   addReservation: (reservation: Reservation) => void;
   updateReservation: (id: string, data: Partial<Reservation>) => void;
+  
+  addUsageRecord: (record: UsageRecord) => void;
+  
   addWorkOrder: (workOrder: WorkOrder) => void;
   updateWorkOrder: (id: string, data: Partial<WorkOrder>) => void;
+  
+  addMaintenanceLog: (log: MaintenanceLog) => void;
+  
+  addMaterialUsage: (usage: MaterialUsage) => void;
+  updateMaterialStock: (id: string, quantity: number) => void;
+  
   addAnnouncement: (announcement: Announcement) => void;
+  
   updateDevice: (id: string, data: Partial<Device>) => void;
+  
+  addCalibration: (calibration: Calibration) => void;
+  addTraining: (training: Training) => void;
+  addInspection: (inspection: Inspection) => void;
+  updateInspection: (id: string, data: Partial<Inspection>) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -58,8 +85,35 @@ export const useAppStore = create<AppState>((set) => ({
   announcements: mockAnnouncements,
   inspections: mockInspections,
   materials: mockMaterials,
+  usageRecords: [],
+  maintenanceLogs: [],
+  materialUsages: [],
 
   setCurrentUser: (user) => set({ currentUser: user }),
+  
+  addUser: (user) =>
+    set((state) => ({
+      users: [...state.users, user],
+    })),
+  
+  updateUser: (id, data) =>
+    set((state) => ({
+      users: state.users.map((u) =>
+        u.id === id ? { ...u, ...data } : u
+      ),
+    })),
+  
+  deleteUser: (id) =>
+    set((state) => ({
+      users: state.users.filter((u) => u.id !== id),
+    })),
+  
+  toggleUserActive: (id) =>
+    set((state) => ({
+      users: state.users.map((u) =>
+        u.id === id ? { ...u, active: !u.active } : u
+      ),
+    })),
   
   addReservation: (reservation) =>
     set((state) => ({
@@ -71,6 +125,11 @@ export const useAppStore = create<AppState>((set) => ({
       reservations: state.reservations.map((r) =>
         r.id === id ? { ...r, ...data } : r
       ),
+    })),
+  
+  addUsageRecord: (record) =>
+    set((state) => ({
+      usageRecords: [...state.usageRecords, record],
     })),
   
   addWorkOrder: (workOrder) =>
@@ -85,6 +144,23 @@ export const useAppStore = create<AppState>((set) => ({
       ),
     })),
   
+  addMaintenanceLog: (log) =>
+    set((state) => ({
+      maintenanceLogs: [...state.maintenanceLogs, log],
+    })),
+  
+  addMaterialUsage: (usage) =>
+    set((state) => ({
+      materialUsages: [...state.materialUsages, usage],
+    })),
+  
+  updateMaterialStock: (id, quantity) =>
+    set((state) => ({
+      materials: state.materials.map((m) =>
+        m.id === id ? { ...m, stock: Math.max(0, m.stock - quantity) } : m
+      ),
+    })),
+  
   addAnnouncement: (announcement) =>
     set((state) => ({
       announcements: [announcement, ...state.announcements],
@@ -94,6 +170,28 @@ export const useAppStore = create<AppState>((set) => ({
     set((state) => ({
       devices: state.devices.map((d) =>
         d.id === id ? { ...d, ...data } : d
+      ),
+    })),
+  
+  addCalibration: (calibration) =>
+    set((state) => ({
+      calibrations: [...state.calibrations, calibration],
+    })),
+  
+  addTraining: (training) =>
+    set((state) => ({
+      trainings: [...state.trainings, training],
+    })),
+  
+  addInspection: (inspection) =>
+    set((state) => ({
+      inspections: [...state.inspections, inspection],
+    })),
+  
+  updateInspection: (id, data) =>
+    set((state) => ({
+      inspections: state.inspections.map((i) =>
+        i.id === id ? { ...i, ...data } : i
       ),
     })),
 }));

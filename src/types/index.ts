@@ -53,6 +53,10 @@ export interface Reservation {
   status: ReservationStatus;
   approvalComment?: string;
   createdAt: string;
+  actualStartTime?: string;
+  actualEndTime?: string;
+  usageDuration?: number;
+  totalCost?: number;
 }
 
 export interface UsageRecord {
@@ -60,10 +64,13 @@ export interface UsageRecord {
   reservationId: string;
   deviceId: string;
   userId: string;
-  actualStart: string;
-  actualEnd: string;
-  deviceStatusAfter: string;
-  notes?: string;
+  startTime: string;
+  endTime: string;
+  durationHours: number;
+  deviceStatus: DeviceStatus;
+  remarks?: string;
+  recordedAt: string;
+  recordedBy: string;
 }
 
 export type WorkOrderPriority = 'low' | 'medium' | 'high' | 'urgent';
